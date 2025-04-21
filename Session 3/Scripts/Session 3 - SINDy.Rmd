@@ -1,0 +1,107 @@
+---
+title: "Session 3 - SINDy"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "glmnet",
+                     "havok",
+                     "here",
+                     "magrittr",
+                     "sindyr",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 3 - SINDy.Rmd") # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+```{r data}
+
+```
+
+Two approaches:
+
+1. package:sindyr
+2. Code your own, using glmnet::glmnet(). (This is how HBR do it.)
+3. Package havok
+
+The former only does polynomials. The latter is more flexible but more of a pain.
+
+# Lorenz SINDy
+
+Assume we've done all the tests...
+
+## Package sindyr
+
+### SINDy - version 1 (sindyr default)
+```{r}
+sindyr::sindy() ->
+  sindy1
+```
+
+### SINDy - version 2 (FOCD)
+```{r createDerivatives}
+
+```
+```{r}
+sindyr::sindy() ->
+  sindy2
+```
+
+
+## Package glmnet
+
+### SINDy - version 3 (glmnet)
+```{r create_glmnet_derivatives}
+
+```
+
+
+```{r createPolynomials}
+
+```
+
+In the next, $\alpha$ between 0 and 1 can help maintain some sparseness while increasing numerical stability. There is also the possibility of doing *adaptive LASSO* using a weights parameter in the glmnet() call. That's a bit much for here, but HBR note that "[a]daptive LASSO can increase the consistency of LASSO (meaning that the probability that the estimated coefficient approaches its true value converges to 1 as the  sample size increases indefinitely) by computing adaptive weights differentially penalizing coefficients in the L1 constraint" (p. 274).
+
+``` {r glmnet_SINDy}
+glmnet(x = ,  # input (indepenent) variables
+       y = ,  # output (response) variables
+       alpha = 1,                           # 1 = LASSO, 0 = ridge. 0<=alpha<=1
+       family = "mgaussian") ->             # multivariable gaussian
+  sindy3
+```
+
+
+## Package havok
+
+Constant interval data only; interpolate to get those.
+
+Only uses finite differences, though.
+```{r}
+havok::sindy(x = lorenz_x,
+             dt = 1,
+             lambda = 0.05,
+             polyOrder = 3,
+             useSine = FALSE) ->            # Can include sines and cosines!
+  sindy4
+```
+
+
+## Fixed points
+
