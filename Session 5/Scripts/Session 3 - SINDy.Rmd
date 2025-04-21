@@ -1,0 +1,60 @@
+---
+title: "Session 3 - SINDy"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "here",
+                     "magrittr",
+                     "NlinTS",
+                     "nonlinearAnalysis",
+                     "rEDM",
+                     "Rssa",
+                     "sindyr",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 3 - SINDy.Rmd") # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+```{r data}
+
+```
+
+SINDy
+
+Use sindyr or do it the HBR way? Probably the latter...which is faster? HBR use adaptive weights; this is better than Dale & Bhat. Do both?
+
+# Lorenz SINDy
+
+Assume we've done all the tests
+
+## Derivative estimates
+
+## SINDy - version 1 (HBR)
+
+## SINDy - version 2 (Package)
+
+## Fixed points
+
+Find the fixed points (need a numeric routine) and stability
+
+# Other SINDy 
+
+Look at latent SINDy

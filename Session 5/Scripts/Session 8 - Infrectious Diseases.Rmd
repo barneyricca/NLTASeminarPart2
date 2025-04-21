@@ -1,0 +1,147 @@
+---
+title: "Session 8 - Infectious Diseases"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("here")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 8 - Infectious Diseases.Rmd") # To help find all the files.
+
+source(here("Scripts/Setup.R"))
+```
+
+```{r data}
+load(here("Data/NY Scarlet Fever.RData"))
+
+# Get stuff
+```
+
+```{r testsRound1}
+bds.test()
+
+```
+
+Pick a stream, any stream.
+```{r}
+```
+
+Choose a delay
+```{r}
+mi_ksg(MotorVehicle) ->
+  mi
+
+plot(mi)
+
+which.troughs(mi)[1] - 1 ->                 # This automates the visual
+  delay                                     #  we used. 0-indexed, so - 1
+
+```
+
+Embedding dimension
+```{r}
+
+```
+
+Theiler window
+```{r}
+
+```
+Embed
+```{r}
+
+```
+
+Plot (if possible)
+```{r}
+
+```
+
+## Tests
+
+Noise: Is the signal simply noise?
+```{r}
+bds.test(x = ,                    # data stream
+         m = ,                             # Embed. dim. of 2, 3, and 4
+         eps = seq(0.1 * sd(MotorVehicle),    # How close is close? Try various
+                   2 * sd(MotorVehicle),      #  values.
+                   length.out = 6)) ->
+  bds                                       # H0: Series of random i.i.d.
+bds$p.value                                 # For various dimensions and
+                                            #  definitions of "close"
+```
+If $p < 0.05$ there's a signal. (The time graph indicates that the signal probably isn't linear.)
+
+Maximum characteristic Lyapunov exponent
+```{r}
+maxLyapunov(MotorVehicle,
+            max.embedding.dim = 6,
+            radius = 5)
+```
+Why do we care about chaos? Chaos in real data becomes almost impossible to model.
+
+
+Nonlinearity: Is there a nonlinear signal?
+```{r}
+nse(MotorVehicle)$nse               # Nash-Sutcleffe coefficient of
+                                            #  efficiency
+
+```
+Typically, nse > 0.65 is proposed as the threshold for a nonlinear model to exist. nse > 0 means the nonlinear model is a better predictor than the mean of the data; nse < 0 inidcates that the mean is a better predictor than the model. Of course, these are dependent on embedding dimensions, delays, and so on, so this will not always produce what is desired.
+
+Test ARIMA models
+```{r}
+Keenan.test(MotorVehicle)
+tlrt(MotorVehicle, p = 26)
+Tsay.test(MotorVehicle, order = 26)            # H0: Linear AR; H1: Quadratic AR
+```
+
+Nonstationary test: Is the signal nonstationary?
+```{r}
+nl_cross_pred(MotorVehicle,
+              nseg = 5,                     # Default is 5
+              m.max = 6)                    # Default is 6
+
+```
+
+```{r}
+crqa()
+
+```
+
+
+There are other tests as well
+
+## Is There a Signal?
+
+Surrogate data testing
+```{r}
+surrogateTest(lh_df$Hare[1:39])
+```
+
+
+CCM
+```{r}
+rEDM::ccm()
+```
+
+# Model
+
+## SINDy
+
+## DMD
+
+## Extreme Value Statistics

@@ -1,0 +1,59 @@
+---
+title: "Session 2 - Latent Classes"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "here",
+                     "magrittr",
+                     "NlinTS",
+                     "nonlinearAnalysis",
+                     "rEDM",
+                     "Rssa",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 2 - Latent Classes.Rmd") # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+```{r data}
+
+# Synthetic data
+
+# Real-world data
+
+```
+
+# Clustering
+
+k-means
+hierarchical
+
+# Growth Mixture Modeling (GMM)
+
+Do GMM, KML, GCKM here...even though GMM is considered "best"
+
+# K-Means Longitudinal (KML)
+
+# Growth Curve K-Means (GCKM)
+
+
+# DSA Latent Classes
+
+Do whatever data were used for the DSA example

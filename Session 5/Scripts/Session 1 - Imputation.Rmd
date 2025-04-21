@@ -1,0 +1,113 @@
+---
+title: "Session 1 - Imputation"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "here",
+                     "imputeMissings",
+                     "imputeTS",            # na_kalman()
+                     "magrittr",
+                     # "NlinTS",
+                     # "nonlinearAnalysis",
+                     # "rEDM",
+                     # "Rssa",
+                     "tidyverse",
+                     "VIM")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 1 - Imputation.Rmd") # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+# Multivariate Time Series
+```{r mvData}
+mi::CHAIN
+
+```
+
+```{r knnImputation}
+# I don't know of any time-series specific knn.
+data.frame("airGap" = as.numeric(tsAirgap)) ->
+  airgap_df
+VIM::kNN(data = airgap_df,
+        variable = "airGap") ->
+  tsAirgap_knn
+
+#as.data.frame(tsAirgap) %>%
+  VIM::kNN(data = airgap_df) ->
+  dum1
+
+# VIM::knn() for general knn
+
+```
+
+```{r randomForestImputation}
+library(imputeMissings)
+
+set.seed(42)                                # Is this needed here?
+imputeMissings::impute(data = as.data.frame(tsAirgap),     # Does train and test under the
+       method = "randomForest") ->          #  hood.
+  tsAirgap_rf
+  
+imputeMissings::impute(data = tsNH4,        # Does train and test under the
+       method = "randomForest") ->          #  hood.
+  tsNH4_rf
+  
+imputeMissings::impute(data = tsHeating,    # Does train and test under the
+       method = "randomForest") ->          #  hood.
+  tsHeating_rf
+  
+# Plot (not good for long data)
+
+# Distribution
+
+
+# For an alternative approach, see:
+#  https://rpubs.com/lmorgan95/MissForest
+#  This also has some information on parallelizing the random forest process.
+
+```
+
+# Univariate Time Series
+
+```{r dataFrom_imputeTS}
+data(tsAirgap)                              # Short (144) time-series, with NA
+data.frame(airgap = as.numeric(tsAirgap)) ->
+  airgap_df
+data(tsAirgapComplete)                      #  and complete.
+
+data(tsNH4)                                 # Long (4552) time-series, with NA
+data(tsNH4Complete)                         #  and complete.
+
+data(tsHeating)                             # Very long (606837) time-series
+data(tsHeatingComplete)                     #  with NA and complete.
+
+```
+
+```{r KalmanImputation}
+imputeTS::na_kalman(tsAirgap) ->
+  airgap_kalman
+
+{
+  plot(density(tsAirgapComplete))
+  lines(density(airgap_kalman),
+        col = "blue")
+  legend()
+}
+```

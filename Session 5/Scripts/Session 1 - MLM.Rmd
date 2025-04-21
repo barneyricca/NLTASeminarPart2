@@ -1,0 +1,48 @@
+---
+title: "Session 1 - MLM"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "here",
+                     "magrittr",
+                     "NlinTS",
+                     "nonlinearAnalysis",
+                     "rEDM",
+                     "Rssa",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 1 - MLM.Rmd") # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+```{r data}
+
+```
+
+
+Not pooled
+completely pooled
+partially pooled
+
+Gelman and Hill data (radon, or whatever they do).
+
+Show that the estimates are the same, but the standard errors are not.
+
+Interpretation

@@ -1,0 +1,809 @@
+---
+title: "Session 5 - HMM"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c(#"depmixS4",
+                     "devtools",            # R packages needed here
+                     "here",
+                     "magrittr",
+                     "markovchain",
+                     #"NlinTS",
+                     #"nonlinearAnalysis",
+                     #"rEDM",
+                     #"Rssa",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 5 - HMM.Rmd")         # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+```{r data}
+set.seed(20250423)
+
+# Simulate data from Matrix:
+20 -> n_days
+
+vector(mode = "character",
+       length = n_days) ->
+  weather
+
+"Sun" -> weather[1]                         # First day
+c(1,0) -> init                              # First day
+
+
+matrix(c(0.8, 0.2, 0.95, 0.05),
+       nrow = 2,
+       ncol = 2,
+       byrow = TRUE) ->
+  m
+
+
+for(index in 2:n_days) {
+  t(init) %*% m ->
+    probs
+  sample(c("Sun", "Rain"),               # Get weather based on probabilities
+         1,
+         prob = probs) ->
+    weather[index]
+  if(weather[index] == "Sun") {
+    c(1,0) -> init
+  } else {
+    c(0,1) -> init
+  }
+}
+
+
+sample(LETTERS[1:4], 40, replace = TRUE, prob = c(0.4, 0.3, 0.2, 0.1)) ->
+  data1
+
+markovchainFit(data1, nboot = 1000) -> 
+  markov1
+```
+
+
+# Markov Models
+
+
+HMM
+
+# HMM 1
+The data used has been created from two datasets:
+
+Google mobility data: https://www.google.com/covid19/mobility/
+
+NOAA climate data from Chicago O’Hare: https://www.ncdc.noaa.gov/
+
+```{r}
+weather_mob <- read.csv("/Users/andrewleonard/Library/Mobile Documents/com~apple~CloudDocs/Grad School/Linear:Non Linear/weather_mobility.csv")
+
+#pull out spring dates only
+spring <- weather_mob[1:90,]
+```
+
+Define 3 states:
+
+Clear (below 53 degrees and no precipitation)
+
+Rainy (below 53 degrees with precipitation)
+
+Warm (53 degrees or above)
+
+Add the states to the dataset
+```{r}
+#find rainy days
+spring$rain <- ifelse(spring$prcp > 0, 1, 0)
+
+#classify each observation as a specific state: rain, clear, or warm
+spring$markov_states <- ifelse(spring$rain == 1 & spring$tmax < 53, "rain", 
+                               ifelse(spring$rain == 0 & spring$tmax < 53, "clear", "warm"))
+```
+
+
+Park mobility observations are taken from the Google Mobility data. The data compares mobility for the report date to the baseline day. Calculated for the report date (unless there are gaps) and reported as a positive or negative percentage. The baseline day is the median value from the 5‑week period Jan 3 – Feb 6, 2020.
+
+Bin the mobility data to create 3 types of observations:
+
+Low Mobility (less than -10)
+
+Moderate Mobility (-10 to 40)
+
+High Mobility (> 40)
+
+```{r}
+plot(spring$parks)
+abline(h = c(-10, 40), col = "red")
+
+
+#bin mobilty data as low, moderate, high mobility
+spring$park_obs <- ifelse(spring$parks < -10, "L",
+                          ifelse(spring$parks >= -10 & spring$parks < 40, "M", "H"))
+```
+
+Part 1: Define Structure of HMM (sequence of hidden states known)
+In part 1, the hidden states are known for the estimation of the transition and emissions matrix as we generated the example. Part 2 will detail use of Baum-Welch to estimate these matrices when the hidden states are not known.
+
+Hidden States
+In a Hidden Markov Model, the state at time 𝑡 is unknown. The state will emit an observation, 𝑣. In this example, 𝑀 is the number of hidden states. The set of Hidden States is 𝑆.
+
+Thus, 𝑆𝑀= {clear, rainy, warm}
+
+```{r}
+
+#define state: 
+S <- c('clear','rain', 'warm')
+```
+
+Transition Probability Matrix
+The transition matrix is the probability of changing from one state to another state. It is represented as a 𝑀×𝑀 matrix where the rows sum to 1. 𝑎𝑖𝑗 is simply the probability of state 𝑖i changing to state 𝑗 at 𝑡+1.
+
+𝑎𝑖𝑗=𝑝(𝑠(𝑡+𝑎)=𝑗|𝑠(𝑡)=𝑖
+
+The transition probability matrix here:
+
+(𝐴̂)=⎡⎣⎢⎢𝑝(𝑐𝑙𝑒𝑎𝑟|𝑐𝑙𝑒𝑎𝑟)𝑝(𝑟𝑎𝑖𝑛𝑦|𝑐𝑙𝑒𝑎𝑟)𝑝(𝑤𝑎𝑟𝑚|𝑐𝑙𝑒𝑎𝑟)𝑝(𝑐𝑙𝑒𝑎𝑟|𝑟𝑎𝑖𝑛𝑦)𝑝(𝑟𝑎𝑖𝑛𝑦|𝑟𝑎𝑖𝑛𝑦)𝑝(𝑤𝑎𝑟𝑚|𝑟𝑎𝑖𝑛𝑦)𝑝(𝑐𝑙𝑒𝑎𝑟|𝑤𝑎𝑟𝑚)𝑝(𝑟𝑎𝑖𝑛𝑦|𝑤𝑎𝑟𝑚)𝑝(𝑤𝑎𝑟𝑚|𝑤𝑎𝑟𝑚)⎤⎦⎥⎥
+
+A simple example of a transition matrix with two states time step to 10:
+
+```{r}
+
+spring$markov_states[1:10]
+##  [1] "clear" "warm"  "clear" "warm"  "warm"  "warm"  "clear" "clear" "warm" 
+## [10] "clear"
+```
+
+The following transitions occur:
+
+clear -> clear 1x
+
+clear -> warm 3x
+
+warm -> clear 3x
+
+warm -> warm 2x
+
+Our expected transition matrix for this simple example is:
+
+𝐴=[.25.6.75.4]
+
+Compare to output using markovchainFit function.
+
+```{r}
+
+simple_A <- markovchainFit(spring$markov_states[1:10])
+simple_A$estimate
+```
+
+## MLE Fit 
+##  A  2 - dimensional discrete Markov Chain defined by the following states: 
+##  clear, warm 
+##  The transition matrix  (by rows)  is defined as follows: 
+##       clear warm
+## clear  0.25 0.75
+## warm   0.60 0.40
+Repeat the same process on all 90 states for the estimated transition matrix.
+
+#find transition matrix using markovchain library
+```{r}
+
+transition <- markovchainFit(data=spring$markov_states)
+transition$estimate
+## MLE Fit 
+##  A  3 - dimensional discrete Markov Chain defined by the following states: 
+##  clear, rain, warm 
+##  The transition matrix  (by rows)  is defined as follows: 
+##           clear       rain      warm
+## clear 0.1428571 0.42857143 0.4285714
+## rain  0.4545455 0.09090909 0.4545455
+## warm  0.2105263 0.01754386 0.7719298
+A <- rbind(c(transition$estimate[1]), (transition$estimate[2]), (transition$estimate[3]))
+
+#check rows sum to 1
+apply(A, 1, sum)
+```
+
+## [1] 1 1 1
+Sequence of Observations
+At each time step 𝑡 the system will emit an observation: low, moderate, or high mobility at the parks. This creates a sequence of observations 𝑉𝑇.
+
+Key Point: each observation is dependent on the state that generated it, not on the neighboring observations.
+
+#H: High - L: Low - M: Moderate (alphabetical order)
+```{r}
+
+V_labels <- c('H', 'L','M') 
+  
+V <- spring$park_obs
+```
+
+Emission Probability Matrix
+The emissions probability matrix contains the probability of emitting symbol 𝑘 given state 𝑗. It is represented by a 𝑀×𝐶 matrix that rows also sum to 1.
+
+Our observation symbols are L, M, H. One observation will emit from a state at each time step. The estimated emissions matrix will be as follows:
+
+(𝐵̂)=⎡⎣⎢⎢𝑝(ℎ𝑖𝑔ℎ|𝑐𝑙𝑒𝑎𝑟)𝑝(ℎ𝑖𝑔ℎ|𝑟𝑎𝑖𝑛𝑦)𝑝(ℎ𝑖𝑔ℎ|𝑤𝑎𝑟𝑚)𝑝(𝑙𝑜𝑤|𝑐𝑙𝑒𝑎𝑟)𝑝(𝑙𝑜𝑤|𝑟𝑎𝑖𝑛𝑦)𝑝(𝑙𝑜𝑤|𝑤𝑎𝑟𝑚)𝑝(𝑚𝑜𝑑𝑒𝑟𝑎𝑡𝑒|𝑐𝑙𝑒𝑎𝑟)𝑝(𝑚𝑜𝑑𝑒𝑟𝑎𝑡𝑒|𝑟𝑎𝑖𝑛𝑦)𝑝(𝑚𝑜𝑑𝑒𝑟𝑎𝑡𝑒|𝑤𝑎𝑟𝑚)⎤⎦⎥⎥
+
+To find the emission’s matrix from the observed data, find the number of times each state is observed for a specific observation type and divide by total number of observations for the state.
+
+#Emissions probabilities
+```{r}
+
+#contingency table
+e_table <- table(spring$markov_states, spring$park_obs)
+e_table
+##        
+##          H  L  M
+##   clear  1  8 12
+##   rain   0 11  0
+##   warm  15 10 33
+#probabilities
+clear <- e_table[1,]/sum(e_table[1,])
+rain <- e_table[2,]/sum(e_table[2,])
+warm <- e_table[3,]/sum(e_table[3,])
+
+#make sure order is same as S vector above
+B <- rbind(clear, rain, warm)
+B
+```
+
+##                H         L         M
+## clear 0.04761905 0.3809524 0.5714286
+## rain  0.00000000 1.0000000 0.0000000
+## warm  0.25862069 0.1724138 0.5689655
+Initial Probability Distribution
+The initial state is the state 𝑠 at 𝑡=1. Estimate the probability of starting at a particular state from the probability of being in a state in the observed data.
+
+```{r}
+
+table(spring$markov_states)/length(spring$markov_states)
+## 
+##     clear      rain      warm 
+## 0.2333333 0.1222222 0.6444444
+pi <- rbind(c(.26, .14, .6))
+#pi <- rbind(c(1,0,0))
+```
+
+𝜋=[.26.14.60]
+
+Run HMM Model
+```{r}
+
+# Initialise HMM
+hmm = initHMM(S, V_labels, startProbs = pi, transProbs = A, emissionProbs = B)
+print(hmm)
+## $States
+## [1] "clear" "rain"  "warm" 
+## 
+## $Symbols
+## [1] "H" "L" "M"
+## 
+## $startProbs
+## clear  rain  warm 
+##  0.26  0.14  0.60 
+## 
+## $transProbs
+##        to
+## from        clear       rain      warm
+##   clear 0.1428571 0.42857143 0.4285714
+##   rain  0.4545455 0.09090909 0.4545455
+##   warm  0.2105263 0.01754386 0.7719298
+## 
+## $emissionProbs
+##        symbols
+## states           H         L         M
+##   clear 0.04761905 0.3809524 0.5714286
+##   rain  0.00000000 1.0000000 0.0000000
+##   warm  0.25862069 0.1724138 0.5689655
+```
+
+Evaluation Problem
+Our model is defined as 𝜃 and our sequence of observations  𝑉𝑇
+
+Given 𝜃 and 𝑉𝑇, estimate 𝑝(𝑉𝑇|𝜃)
+
+In other words, let us calculate the probability our model generated a particular sequence 𝑉𝑇.
+
+Brute Force
+
+If we do not know the specific series sequence of weather events (our hidden states) that have generated our observations, we can compute the probability of seeing our observations vector by summing over all possible weather events, weighted by their probability (that is, our transition probability).
+
+Calculate the joint probability of the sequence of observations generated by a specific sequences of hidden states.
+
+𝑃(𝑉𝑇,𝑆𝑇)=𝑝(𝑉𝑇|𝑆𝑇)𝑝(𝑆𝑇)
+
+Simple Example:
+
+```{r}
+
+spring$park_obs[1:3]
+## [1] "M" "M" "M"
+spring$markov_states[1:3]
+```
+
+## [1] "clear" "warm"  "clear"
+𝑝(𝑀,𝑀,𝑀,𝑐𝑙𝑒𝑎𝑟,𝑤𝑎𝑟𝑚,𝑐𝑙𝑒𝑎𝑟)=𝑝(𝑐𝑙𝑒𝑎𝑟|𝑖𝑛𝑖𝑡𝑖𝑎𝑙𝑠𝑡𝑎𝑡𝑒)×𝑝(𝑤𝑎𝑟𝑚|𝑐𝑙𝑒𝑎𝑟)×𝑝(𝑐𝑙𝑒𝑎𝑟|𝑤𝑎𝑟𝑚)×𝑝(𝑀|𝑐𝑙𝑒𝑎𝑟)×𝑝(𝑀|𝑤𝑎𝑟𝑚)×𝑝(𝑀|𝑐𝑙𝑒𝑎𝑟)
+
+This gives the probability for a specific sequence of hidden states. To answer our question we must compute the probability of all the different possible sequences of hidden states by summing over all the joint probabilities of 𝑉𝑇 and 𝑆𝑇
+
+Forward Algorithm
+
+The forward algorithm is more efficient as it derives the probability of the next step on the computed probability of the current step. Goal of forward algorithm compute the joint distribution on 𝑆𝑘 given 𝑥1:𝑘
+
+Simple example: HMM model is 𝜃. What is the probability the set of observations (𝑀,𝑀,𝑀) came from model $? 𝑝(𝑉𝑇|𝜃).
+
+```{r}
+
+#take first 5 observations
+V_sample <- c("M", "M", "M")
+ 
+forward = function(v, a, b, initial_distribution){
+  
+  T = length(v)
+  m = nrow(a)
+  alpha = matrix(0, T, m)
+  
+  alpha[1, ] = initial_distribution*b[, v[1]]
+  
+  for(t in 2:T){
+    tmp = alpha[t-1, ] %*% a
+    alpha[t, ] = tmp * b[, v[t]]
+  }
+  return(alpha)
+}
+ 
+answer <- forward(V_sample,A,B,pi)
+answer
+##            [,1] [,2]      [,3]
+## [1,] 0.14857143    0 0.3413793
+## [2,] 0.05319647    0 0.1861623
+## [3,] 0.02673803    0 0.0947343
+sum(answer[3,])
+## [1] 0.1214723
+```
+
+33 possible sequences.
+
+```{r}
+
+library(gtools)
+## Warning: package 'gtools' was built under R version 4.0.2
+#all possible sequences
+test <- permutations(3,3,V_labels, repeats = TRUE)
+
+total <- 0
+
+for (i in 1:27){ 
+  x <- (test[i,])
+  print(sum(forward(x,A,B,pi)[3,]))
+  total <- total + sum(forward(x,A,B,pi)[3,])
+}
+## [1] 0.00697557
+## [1] 0.008380835
+## [1] 0.01863386
+## [1] 0.007182617
+## [1] 0.01503328
+## [1] 0.0204982
+## [1] 0.01723678
+## [1] 0.0273872
+## [1] 0.04622502
+## [1] 0.01063998
+## [1] 0.01374071
+## [1] 0.02844846
+## [1] 0.01911666
+## [1] 0.04803857
+## [1] 0.05982393
+## [1] 0.02887392
+## [1] 0.05610437
+## [1] 0.07770931
+## [1] 0.01826295
+## [1] 0.02200183
+## [1] 0.04878749
+## [1] 0.02569668
+## [1] 0.05662683
+## [1] 0.0792162
+## [1] 0.04528922
+## [1] 0.07259721
+## [1] 0.1214723
+total
+## [1] 1
+test[24,]
+## [1] "M" "L" "M"
+Backward Algorithm
+
+#backward
+backward = function(V, A, B){
+  T = length(V)
+  m = nrow(A)
+  beta = matrix(1, T, m)
+  
+  for(t in (T-1):1){
+    tmp = as.matrix(beta[t+1, ] * B[, V[t+1]])
+    beta[t, ] = t(A %*% tmp)
+  }
+  return(beta)
+}
+
+backward(V_sample,A,B)
+##           [,1]      [,2]      [,3]
+## [1,] 0.1629997 0.2292378 0.2848891
+## [2,] 0.3254750 0.5183609 0.5595022
+## [3,] 1.0000000 1.0000000 1.0000000
+```
+
+Decoding Problem
+The decoding problem finds the most probable hidden state at each time step. In other words, what is the most probable path given our set of observations?
+
+Viterbi
+
+Find most likely states based on A and B estimates from observed data. use the viterbi algorithm.
+
+```{r}
+
+#HMM most likely states
+HMM_states <- viterbi(hmm, V)
+
+#compare model to actual
+cbind(HMM_states, spring$markov_states)[1:15]
+##  [1] "warm"  "warm"  "warm"  "warm"  "warm"  "warm"  "warm"  "warm"  "warm" 
+## [10] "clear" "rain"  "clear" "rain"  "clear" "rain"
+#how'd we do? % of states correct
+sum(HMM_states == spring$markov_states)/length(spring$markov_states)
+## [1] 0.7222222
+plot(HMM_states == spring$markov_states)
+
+```
+
+Part 2: Estimate A and B (sequence of hidden states unknown)
+Learning Problem
+Hidden Markov Models are generally an unsupervised learning process where the number of hidden states are unknown and only the observed symbols are visible.
+
+Often, training data is used where a number of specific hidden states is specified.
+
+Baum-Welch
+
+The Baum-Welch algorithm (forward/backward algorithm) is a special case of Expectation Maximization that will estimate the Transition and Emission probabilities.
+
+```{r}
+
+#update H,L,M to 1,2,3 for function. 
+spring$park_obs <- ifelse(spring$parks < -10, 1,
+                          ifelse(spring$parks >= -10 & spring$parks < 40, 2, 3))
+
+#BaumWelch
+BaumWelch = function(v, a, b, initial_distribution, n.iter = 100){
+  
+  for(i in 1:n.iter){
+    T = length(v)
+    M = nrow(a)
+    K=ncol(b)
+    alpha = forward(v, a, b, initial_distribution)
+    beta = backward(v, a, b)
+    xi = array(0, dim=c(M, M, T-1))
+    
+    for(t in 1:T-1){
+      denominator = ((alpha[t,] %*% a) * b[,v[t+1]]) %*% matrix(beta[t+1,]) 
+      for(s in 1:M){
+        numerator = alpha[t,s] * a[s,] * b[,v[t+1]] * beta[t+1,]
+        xi[s,,t]=numerator/as.vector(denominator)
+      }
+    }
+    
+    
+    xi.all.t = rowSums(xi, dims = 2)
+    a = xi.all.t/rowSums(xi.all.t)
+    
+    gamma = apply(xi, c(1, 3), sum)  
+    gamma = cbind(gamma, colSums(xi[, , T-1]))
+    for(l in 1:K){
+      b[, l] = rowSums(gamma[, which(v==l)])
+    }
+    b = b/rowSums(b)
+    
+  }
+  return(list(a = a, b = b, initial_distribution = initial_distribution))
+}
+
+M=3; K=3
+A = matrix(1, M, M)
+A = A/rowSums(A)
+B = matrix(1:6, M, K)
+B = B/rowSums(B)
+initial_distribution = c(1/3,1/3, 1/3)
+
+(myout = BaumWelch(spring$park_obs, A, B, initial_distribution, n.iter = 100))
+## $a
+##           [,1]       [,2]       [,3]
+## [1,] 0.3953952 0.53133439 0.07327042
+## [2,] 0.7546056 0.20945732 0.03593709
+## [3,] 0.1042512 0.06582564 0.82992313
+## 
+## $b
+##            [,1]      [,2]       [,3]
+## [1,] 0.02238586 0.7390644 0.23854972
+## [2,] 0.30672318 0.4771669 0.21610996
+## [3,] 0.86278023 0.1130348 0.02418494
+## 
+## $initial_distribution
+## [1] 0.3333333 0.3333333 0.3333333
+```
+
+Find most likely states based on A and B matrix estimated from Baum-Welch.
+
+```{r}
+
+pi <- c(1/3,1/3,1/3)
+S <- c("rain", "clear","warm")
+hmm2 = initHMM(S, V_labels, startProbs = pi, transProbs = myout$a, emissionProbs = myout$b)
+
+print(hmm2)
+## $States
+## [1] "rain"  "clear" "warm" 
+## 
+## $Symbols
+## [1] "H" "L" "M"
+## 
+## $startProbs
+##      rain     clear      warm 
+## 0.3333333 0.3333333 0.3333333 
+## 
+## $transProbs
+##        to
+## from         rain      clear       warm
+##   rain  0.3953952 0.53133439 0.07327042
+##   clear 0.7546056 0.20945732 0.03593709
+##   warm  0.1042512 0.06582564 0.82992313
+## 
+## $emissionProbs
+##        symbols
+## states           H         L          M
+##   rain  0.02238586 0.7390644 0.23854972
+##   clear 0.30672318 0.4771669 0.21610996
+##   warm  0.86278023 0.1130348 0.02418494
+HMM_states2 <- viterbi(hmm2, V)
+
+#compare model to actual
+cbind(HMM_states2, spring$markov_states)
+##       HMM_states2        
+##  [1,] "rain"      "clear"
+##  [2,] "clear"     "warm" 
+##  [3,] "rain"      "clear"
+##  [4,] "clear"     "warm" 
+##  [5,] "clear"     "warm" 
+##  [6,] "rain"      "warm" 
+##  [7,] "clear"     "clear"
+##  [8,] "rain"      "clear"
+##  [9,] "clear"     "warm" 
+## [10,] "rain"      "clear"
+## [11,] "rain"      "rain" 
+## [12,] "clear"     "clear"
+## [13,] "rain"      "rain" 
+## [14,] "clear"     "clear"
+## [15,] "rain"      "rain" 
+## [16,] "clear"     "warm" 
+## [17,] "rain"      "warm" 
+## [18,] "clear"     "clear"
+## [19,] "rain"      "rain" 
+## [20,] "clear"     "rain" 
+## [21,] "rain"      "clear"
+## [22,] "clear"     "warm" 
+## [23,] "rain"      "clear"
+## [24,] "clear"     "rain" 
+## [25,] "rain"      "warm" 
+## [26,] "rain"      "warm" 
+## [27,] "clear"     "clear"
+## [28,] "rain"      "clear"
+## [29,] "clear"     "warm" 
+## [30,] "rain"      "warm" 
+## [31,] "clear"     "warm" 
+## [32,] "rain"      "rain" 
+## [33,] "clear"     "clear"
+## [34,] "rain"      "warm" 
+## [35,] "clear"     "warm" 
+## [36,] "rain"      "warm" 
+## [37,] "clear"     "clear"
+## [38,] "rain"      "clear"
+## [39,] "clear"     "warm" 
+## [40,] "rain"      "warm" 
+## [41,] "clear"     "warm" 
+## [42,] "rain"      "clear"
+## [43,] "clear"     "rain" 
+## [44,] "rain"      "clear"
+## [45,] "clear"     "rain" 
+## [46,] "rain"      "warm" 
+## [47,] "clear"     "warm" 
+## [48,] "rain"      "warm" 
+## [49,] "clear"     "warm" 
+## [50,] "rain"      "warm" 
+## [51,] "clear"     "warm" 
+## [52,] "rain"      "clear"
+## [53,] "rain"      "rain" 
+## [54,] "clear"     "warm" 
+## [55,] "rain"      "warm" 
+## [56,] "clear"     "warm" 
+## [57,] "rain"      "warm" 
+## [58,] "clear"     "warm" 
+## [59,] "rain"      "warm" 
+## [60,] "clear"     "warm" 
+## [61,] "clear"     "warm" 
+## [62,] "rain"      "clear"
+## [63,] "clear"     "rain" 
+## [64,] "rain"      "warm" 
+## [65,] "clear"     "warm" 
+## [66,] "rain"      "clear"
+## [67,] "clear"     "warm" 
+## [68,] "rain"      "warm" 
+## [69,] "clear"     "clear"
+## [70,] "rain"      "warm" 
+## [71,] "clear"     "warm" 
+## [72,] "rain"      "warm" 
+## [73,] "rain"      "warm" 
+## [74,] "clear"     "warm" 
+## [75,] "rain"      "warm" 
+## [76,] "clear"     "warm" 
+## [77,] "rain"      "warm" 
+## [78,] "clear"     "warm" 
+## [79,] "rain"      "warm" 
+## [80,] "warm"      "warm" 
+## [81,] "warm"      "warm" 
+## [82,] "warm"      "warm" 
+## [83,] "warm"      "warm" 
+## [84,] "rain"      "warm" 
+## [85,] "clear"     "warm" 
+## [86,] "rain"      "warm" 
+## [87,] "warm"      "warm" 
+## [88,] "warm"      "warm" 
+## [89,] "warm"      "warm" 
+## [90,] "rain"      "warm"
+#how'd we do? % of states correct
+sum(HMM_states2 == spring$markov_states)/length(spring$markov_states)
+## [1] 0.2333333
+plot(HMM_states2 == spring$markov_states)
+```
+
+
+
+Sources
+Functions for forward, backward, Baum-Welch, and Viterbi are from: http://www.adeveloperdiary.com/data-science/machine-learning/implement-viterbi-algorithm-in-hidden-markov-model-using-python-and-r/
+
+
+
+From:
+https://rpubs.com/mingo1226/hmm
+
+# R Journal
+https://www.jstatsoft.org/article/view/v036i07 - example with code
+
+
+# HMM and longitudinal
+https://discourse.mc-stan.org/t/examples-for-hidden-markov-models-with-longitudinal-data/14774
+
+
+# Stock market
+```{r}
+library(quantmod)
+getSymbols("^TwII", 
+           src = "yahoo", 
+           from="1900-01-01", to = "2020-01-13")
+chartSeries(TWII, theme="black")
+TWII_subset <- window(TWII, 
+                     start=as.Date("2018-01-01"), 
+                     end=as.Date("2020-01-13"))
+TWII_train <- cbind(TWII_subset$TwII.Close - TWII_subset$TwII.Open)
+```
+
+```{r}
+mod <- depmix(TWII.Close ~ 1, 
+              family = gaussian, 
+              nstates = 5,
+              data = TWII_train)
+set.seed(1)
+fm2 <- fit(mod, 
+           verbose = FALSE)
+```
+
+From:
+https://medium.com/analytics-vidhya/hidden-markov-models-for-time-series-in-r-studio-5ae2b9fb0701
+
+# Trial 1
+```{r}
+library(depmixS4)
+```
+
+```{r}
+# Example sequence of weather observations
+weather <- c("sunny", "rainy", "sunny", "sunny", "rainy", "rainy", "sunny")
+
+# Convert the observations to a factor
+weather <- as.factor(weather)
+
+```
+
+Let's set up a Hidden Markov Model with two states, "Dry" and "Wet," which represent the hidden states. We'll assume that each state can emit either "sunny" or "rainy."
+
+```{r}
+# Define the HMM model
+n_states <- 2 # Number of hidden states (Dry and Wet)
+hmm_model <- depmix(weather ~ 1, family = multinomial(), 
+                    nstates = n_states, 
+                    data = data.frame(weather))
+
+```
+
+Now, we will fit the model using the Expectation-Maximization (EM) algorithm.
+
+
+```{r}
+# Fit the model
+set.seed(123)  # For reproducibility
+hmm_fit <- fit(hmm_model)
+
+```
+
+You can extract and analyze the fitted parameters such as the transition probabilities, emission probabilities, and the most likely sequence of hidden states.
+
+```{r}
+# Get the transition matrix
+transition_probs <- getpars(hmm_fit)[1:4]
+transition_probs <- matrix(transition_probs, nrow = 2, byrow = TRUE)
+colnames(transition_probs) <- c("Dry", "Wet")
+rownames(transition_probs) <- c("Dry", "Wet")
+print("Transition Probabilities:")
+print(transition_probs)
+
+# Get the emission probabilities
+emission_probs <- getpars(hmm_fit)[5:8]
+emission_probs <- matrix(emission_probs, nrow = 2, byrow = TRUE)
+colnames(emission_probs) <- c("sunny", "rainy")
+rownames(emission_probs) <- c("Dry", "Wet")
+print("Emission Probabilities:")
+print(emission_probs)
+
+# Predict the hidden states
+predicted_states <- posterior(hmm_fit)
+print("Predicted States:")
+print(predicted_states)
+
+```
+
+
+Descriptions:
+
+depmixS4::depmix(): This function sets up the HMM. Here, weather ~ 1 indicates that the weather observations are modeled as independent of any covariates, and family = multinomial() specifies that the observations are categorical (sunny or rainy).
+depmixS4::fit(): This function fits the HMM to the data using the Expectation-Maximization algorithm.
+getpars(): This function extracts the model parameters, including transition and emission probabilities.
+posterior(): This function computes the most likely sequence of hidden states given the observed data
+
+From:
+https://www.geeksforgeeks.org/hidden-markov-model-in-r/
+
+# Trial 2
+
+https://conservancy.umn.edu/items/72c63230-eb44-49a9-bdc9-d86e6bcdd31d
+
+
+# More HMM
+Also: rseek for mHMMbayes
+Vignette: 
+https://cran.r-project.org/web/packages/mHMMbayes/vignettes/tutorial-mhmm.html
+
+
+
+
+
+Maybe start ML here? At least do the Python setup, as that can be tricky

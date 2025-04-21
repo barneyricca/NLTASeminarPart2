@@ -1,0 +1,209 @@
+---
+title: "Session 1 - Derivatives"
+output: word_document
+date: "2025-03-16"
+---
+
+STILL TO DO:
+- regularized derivatives in R (not Python)
+- plot regularized derivatives
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "doremi",
+                     "here",
+                     "magrittr",
+                     "NlinTS",
+                     "nonlinearAnalysis",
+                     "rEDM",
+                     "Rssa",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 1 - Derivatives.Rmd") # To help find all the files.
+
+install_github("barneyricca/ndstools")
+library(ndstools)
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+```{r data}
+read.csv(here("Data/Mayport_raw.csv"))[,1] ->
+  mp
+load(here("Data/HRF.RData"))
+```
+
+First, we can look at the Mayport data
+# Finite differences
+
+## Basic
+
+```{r finiteDifferences}
+data.frame(mpv = diff(mp),
+           time = seq(from = 1.5,
+                      to = length(mp) - 0.5,
+                      by = 1)) ->
+  mpv_fd
+```
+
+## Local Linear Analysis (LLA)
+Set the time step to 1/2 and you get basic finite differences. For integer time steps, you can do LLA; you will lose a number of data points equal to $\tau$ at each end of the sequence, so there's a trade-off
+```{r}
+1 -> tau
+
+# A padding trick; it makes things easier
+c(rep(NA, tau), mp[1:(length(mp) - tau)]) -> mpmt
+c(mp[(tau+1):length(mp)], rep(NA, tau)) -> mppt
+
+(mppt - mpmt) / (2 * tau) ->                # Because of the padding, this is
+  mpv_lla                                   # Pretty much the LLA approach
+
+```
+
+## Higher order
+
+HBR like 4th order. This is sort of a generalization of the LLA approach. This keeps the times the same, although we lose two points at either end.
+
+```{r 4thOrderFiniteDifferences}
+
+# Pad each end; it makes things easier below
+c(NA, NA, mp[1:(length(mp)-2)]) -> mpm2
+c(NA, mp[1:(length(mp)-1)]) -> mpm1
+c(mp[2:length(mp)], NA) -> mpp1
+c(mp[3:length(mp)], NA, NA) -> mpp2
+
+# This is 1 unless there are times as well as levels in the data. (I.e., if
+#  there are only indices, leave this as 1 -> delta. Otherwise, use the
+#  sampling period.)
+1 -> delta
+
+# 4th order centered finite difference
+(8*(mpp1 - mpm1) - mpp2 + mpm2) / 12 ->
+  mpv_4fd
+
+```
+
+You can also use an approach similar to *Savitzky-Golay* filtering (known to statisticians as *loess smoothing*) to generalize the higher order approach. This also shows up as the basis for the functional data analysis approach.
+
+## Generalized Local Linear Analysis (GLLA)
+
+```{r glla}
+doremi::calculate.glla(mp,
+                       time = 1:length(mp)) ->
+  mpv_glla
+```
+
+# Functional data analysis (FDA)
+
+Akin to loess smoothing
+```{r glla}
+doremi::calculate.fda(mp,
+                      time = 1:length(mp),
+                      spar = NULL) ->
+  mpv_fda
+```
+
+# Regularized Derivatives
+
+# Empirical Bayes
+
+Can use irregular time intervals (i.e., work with missing data!).
+```{r emb}
+#| eval: FALSE
+EMBestimates(DataM = mp,
+             Nobs = mp_dss$dim,
+             maxorder = 2,
+             dt = 1) ->                     # Or provide TimeM for irregular
+  mpv_emb                                   #  data spacing
+```
+
+# Multilevel-based model: Generalized Orthogonal Local Derivatives (GOLD)
+
+```{r glla}
+doremi::calculate.gold(mp,
+                       time = 1:length(mp)) ->
+  mpv_gold
+```
+
+# (Visual) Comparisons
+
+```{r}
+par()$mfrow ->                              # Want to restore all the graphics
+  row.keep                                  #  parameters afterward
+par()$mar ->
+  mar.keep
+
+{                                           # Finite differences
+  par(mfrow = c(4,1))
+  par(mar = c(0,4,2,0))                     # Avoid "margins too large" error
+  plot(mp, type = 'l', ylab = "Mayport")
+  plot(mpv_fd$time, mpv_fd$mpv, type = 'l', ylab = "FD")
+  plot(mpv_lla, type = 'l', ylab = "LLA")
+  plot(mpv_4fd, type = 'l', ylab = "4th order")
+}
+
+{
+  par(mfrow = c(3,1))
+  par(mar = c(0,4,2,0))
+  plot(mp, ylab = "Mayport",
+       type = 'l')
+  plot(mpv_fda$dsignal[,1], ylab = "FDA Level",
+       type = 'l')
+  plot(mpv_fda$dsignal[,2], ylab = "FDA Velocity",
+       type = 'l')
+}
+
+{
+  par(mfrow = c(3,1))
+  par(mar = c(0,4,2,0))
+  plot(mp, ylab = "Mayport",
+       type = 'l')
+  plot(mpv_glla$dsignal[,1], ylab = "GLLA Level",
+       type = 'l')
+  plot(mpv_glla$dsignal[,2], ylab = "GLLA Velocity",
+       type = 'l')
+}
+
+# Still to do:
+# Regularized
+
+{
+  par(mfrow = c(3,1))
+  par(mar = c(0,4,2,0))
+  plot(mp, ylab = "Mayport",
+       type = 'l')
+  plot(mpv_gold$dsignal[,1], ylab = "GOLD Level",
+       type = 'l')
+  plot(mpv_gold$dsignal[,2], ylab = "GOLD Velocity",
+       type = 'l')
+}
+
+{
+  par(mfrow = c(3,1))
+  par(mar = c(0,4,2,0))
+  plot(mp, ylab = "Mayport",
+       type = 'l')
+  plot(mpv_emb$Derivatives[,1], ylab = "EMB Level",
+       type = 'l')
+  plot(mpv_emb$Derivatives[,2], ylab = "EMB Velocity",
+       type = 'l')
+}
+
+par(mfrow = row.keep)                       # Restore graphics layout
+par(mar = mar.keep)
+
+```
+

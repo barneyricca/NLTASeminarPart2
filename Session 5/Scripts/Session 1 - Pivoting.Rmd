@@ -1,0 +1,53 @@
+---
+title: "Session 1 - Pivoting"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "here",
+                     "magrittr",
+                     "NlinTS",
+                     "nonlinearAnalysis",
+                     "rEDM",
+                     "Rssa",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 1 - Pivoting.Rmd") # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+```{r data}
+
+```
+
+# Basic Pivot (longer)
+
+# Multiple Questions from Multiple Scales on Multiple Days
+
+Benight - Final Wildfire DSA.Rmd, line ~1330
+```{r}
+
+```
+
+# Two step
+Wu - Network ECLS-K.Rmd, line ~100
+```{r}
+
+```
+

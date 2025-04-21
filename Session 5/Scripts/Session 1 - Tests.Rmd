@@ -1,0 +1,110 @@
+---
+title: "Session 1 - Tests"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("crqa",
+                     "devtools",            # R packages needed here
+                     "here",
+                     "magrittr",
+                     "NlinTS",
+                     "nonlinearAnalysis",
+                     "rEDM",
+                     "Rssa",
+                     "tidyverse",
+                     "tseries")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 1 - Tests.Rmd") # To help find all the files.
+
+install_github("barneyricca/ndstools")
+library("ndstools")
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+# Reconstruct a Delay State Space
+```{r data}
+read.csv(
+  here("Data/Mayport_raw.csv"))[,1] ->      # Mayport data from HBR
+  mp
+```
+
+First, we reconstructed a (shadow) delay state space. We find the delay from the first minimum of mutual information, the embedding dimension from the first minimum of the absolute value of the autocorrelation function, and the theiler window from 
+```{r embedMayport}
+ndstools::const_delay_embed(mp) ->
+  mp_dss
+
+mp_dss$delay
+mp_dss$dim
+mp_dss$tw
+```
+
+We then used that delay state space to run a series of tests, each of which has some power to distinguish between one of the mimics and nonlinearity.
+
+## Recurrences
+```{r}
+
+```
+
+
+# Noise Tests
+```{r noise}
+tseries::bds.test(x = mp,
+                  m = mp_dss$dim,
+                  eps = seq(0.1 * sd(mp),
+                            2 * sd (mp),
+                            length.out = 6))$p.value
+```
+
+Tests for noise included the BDS test, various surrogate tests (using discriminant statistics such as MLCE, etc.) and various entropy tests.
+
+# Nonlinear Signal Detection
+```{r nsd}
+nse(mp)$nse
+```
+
+Tests of linearity included various AR tests and nonlinear signal detection (via the Nash-Sutcliffe efficiency)
+
+# Nonstationarity Tests
+Tests of stationarity included nonlinear cross-prediction, where we segment the data and look for degradation in cross-prediction.
+```{r nonstationary}
+
+```
+
+# Singular Spectrum Analysis
+```{r ssa}
+
+```
+
+
+In many of these we used surrogate data to create confidence intervals.
+
+If there was support for a nonlinear signal, we then used singular spectrum analysis to remove some noise and low-frequency components (a.k.a., trend), leaving us with a cleaner signal.
+
+# Repeat Tests
+After cleaning the data, we repeated our tests. 
+```{r repeatTests}
+
+```
+
+Finally, we used convergent cross mapping and transfer entropy to explore the extent to which different data streams were ”causally” (in quotes) related or if they were separable.
+
+# "Causality"
+```{r CCM}
+
+```
+

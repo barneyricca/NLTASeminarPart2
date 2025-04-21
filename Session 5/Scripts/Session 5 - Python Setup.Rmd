@@ -1,0 +1,91 @@
+---
+title: "Session 5 - Python Setup"
+output: word_document
+date: "2025-03-16"
+---
+
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "reticulate",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+```
+
+# Install Tensorflow
+
+Requires Python. Let's follow https://tensorflow.rstudio.com/install/
+
+First, do you have Python?
+```{r}
+system("python3 --version")
+```
+If you have Python, and the output is "Python 3.10.x" where "x" is some number, then you should be good to go.
+
+If you need Python 3.10, remove the "#| eval: FALSE" line in the next chunk and run the chunk. This will take a few minutes. (package:reticulate connects RStudio and Python. See https://rstudio.github.io/reticulate/)
+```{r}
+#| eval: FALSE
+reticulate::install_python(version = "3.10")
+```
+
+
+Install tensorflow stuff. If asked, update All.
+```{r}
+devtools::install_github("rstudio/tensorflow",
+                         force = TRUE)
+```
+The install_github() command takes me about 10-15 seconds or so plus time for updating other packages if needed.
+
+
+There are a few hundred lines of output from the next command. Don't worry, you don't need to know what any of it means.
+```{r}
+library(tensorflow)
+tensorflow::install_tensorflow(envname = "r-tensorflow",
+                               version = "2.16")
+```
+
+Now, confirm all is working fine:
+```{r}
+library(tensorflow)                         # Confirm tensorflow installation
+tf$constant("Hello TensorFlow!")
+```
+
+If all is working as expected, the last command in the previous chunk will produce this output:
+
+tf.Tensor(b'Hello TensorFlow!', shape=(), dtype=string)
+
+
+If you got this far, congratulations! If not, then we'll work on it.
+
+## Installing Python Packages
+
+There are many Python packages that we may require. Hence, you should know how to install them. Here are a few common installs:
+```{r}
+reticulate::py_install(c("matplotlib",
+                         "numpy",
+                         "pandas",
+                         "scikit-learn"))
+```
+
+
+# Some Introductory Machine Learning Sites
+
+Here are some introductory machine learning/tensorflow sites, in case you want to try on your own:
+
+https://tensorflow.rstudio.com/tutorials/quickstart/beginner
+https://www.datacamp.com/tutorial/neural-network-models-r
+https://www.r-bloggers.com/2021/04/deep-neural-network-in-r/#google_vignette
+
+
+

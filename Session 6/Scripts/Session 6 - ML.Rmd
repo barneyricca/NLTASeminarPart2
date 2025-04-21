@@ -1,0 +1,287 @@
+---
+title: "Session 6 - ML"
+output: word_document
+date: "2025-03-16
+---
+
+Lots of simple models, working together, make for a really good model.
+
+Forecasting more than phenomenology, however.
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "fable",
+                     "fabletools",
+                     "forecast",
+                     "here",
+                     "keras",
+                     "magrittr",
+                     "reticulate",
+                     "tensorflow",
+                     "tidyverse",
+                     "tsibble")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 6 - ML.Rmd")          # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+# Amtrak Ridership: One Hidden Layer
+Here's a non-Python approach...it's a neural net, but with only one hidden layer. Taken from Chapter 8 of: Shmueli, G., & Polak, J. (2024). Practical time series forecasting with R: A hands-on guide (Third edition). Axelrod Schnall Publishers. See https://www.forecastingbook.com for data and code.
+
+```{r data}
+read.csv(here("Data/Amtrak.csv")) ->
+  Amtrak.data
+```
+
+```{r wrangleAmtrak}
+Amtrak.data |>
+  dplyr::mutate(Month = 
+    yearmonth(as.character(Amtrak.data$Month))) |>
+  as_tsibble(index = Month) ->
+  ridership
+
+ridership |> 
+  filter_index(~ "2001 Mar") ->
+  train.ridership
+ridership |> 
+  filter_index("2001 Apr" ~ .) ->
+  valid.ridership
+
+```
+
+```{r fitAmtrak}
+set.seed(201)
+fit.nnetar <- train.ridership |> 
+  model(nn = NNETAR(Ridership ~ AR(p = 11, P = 1, period = 12),
+                    n_nodes = 7, n_networks = 20))
+
+report(fit.nnetar)
+```
+
+```{r forecastAmtrak}
+fc <- fit.nnetar |> forecast(valid.ridership, times = 0)
+
+ridership |> 
+  autoplot(Ridership) +
+  geom_line(aes(y = .mean), data = fc, linetype = "dashed", size = 1, colour = "blue1") +
+  geom_line(aes(y = .fitted), data = augment(fit.nnetar), alpha = 0.5, size = 1, colour = "blue1") +
+  xlab("Month") + ylab("Ridership")  + 
+  scale_x_yearmonth(date_breaks = "2 years", date_labels = "%Y")
+
+dplyr::bind_rows(
+  accuracy(fit.nnetar),
+  accuracy(fc, valid.ridership)
+)
+
+# RMSE in the validation period
+accuracy(fc, valid.ridership)$RMSE
+
+#### Figure with training/validation arrows and marks
+
+ridership |>
+autoplot(Ridership) +
+geom_line(aes(y=.mean), data = fc, linetype = "dashed", 
+colour = "blue1")+
+geom_line(aes(y=.fitted), data = augment(fit.nnetar), alpha = 0.5, colour = "blue1")+
+xlab("Time") + ylab("Ridership") +
+scale_x_yearmonth(date_breaks = "2 years", date_labels = "%Y") +
+  geom_vline(xintercept = as.numeric(as.Date(yearmonth("2001-April"))), linetype="solid", color = "grey55", size = 0.6) +
+  geom_segment(aes(x = yearmonth("2001-May"), y = 2250, xend = yearmonth("2004-Mar"), yend = 2250),
+               arrow = arrow(length = unit(0.25, "cm"), ends = "both") , color = "grey55")+  
+  annotate(geom = "text", x = yearmonth("2002-Aug"), y = 2290, label = "Validation", color="grey37") +
+  geom_segment(aes(x = yearmonth("1991-Jan"), y = 2250, xend = yearmonth("2001-Mar"), yend = 2250),
+               arrow = arrow(length = unit(0.25, "cm"), ends = "both"), color = "grey55")+  
+  annotate(geom = "text", x = yearmonth("1996-Aug"), y = 2290, label = "Training", color = "grey37")
+
+
+```
+
+```{r}
+# Performance of NNETAR without specifying parameters:
+set.seed(201)
+
+ridership.optimal <- train.ridership |>
+  model(nn = NNETAR(Ridership))
+
+fc.optimal <- ridership.optimal |> forecast(h = 36, times = 0)
+
+dplyr::bind_rows(
+  accuracy(ridership.optimal),
+  accuracy(fc.optimal, valid.ridership)
+)
+```
+
+# Amtrak Ridership: Deep Learning
+
+"Long short term memory" approach. (The feed-forward/back-propagation can create some feedback problems. LSTM overcomes those, mostly.)
+
+
+```{r}
+########################
+# Chap 8 deep learning: Code for creating Figure 8.7 and Tables 8.2, 8.3, 8.4, 8.5
+########################
+
+Amtrak.data <- read.csv(here("Data/Amtrak.csv"))
+
+ridership <- Amtrak.data |>
+  mutate(Month = yearmonth(as.character(Amtrak.data$Month))) |>
+  as_tsibble(index = Month)
+
+nValid <- 36
+nTrain <- nrow(ridership) - nValid
+train <- ridership[1:nTrain,]
+valid <- ridership[-(1:nTrain),]
+
+# Table 8.2: Step 1: Preparing Amtrak training data for forecasting with LSTM
+
+# Normalization
+minmax <- range(train$Ridership, na.rm = TRUE)
+train <- train |>
+  mutate(Normalized_Ridership = (Ridership - minmax[1]) / (minmax[2] - minmax[1]))
+
+# Function to inverse the normalization
+inv_normalize <- function(x) (minmax[2] - minmax[1]) * x + minmax[1]
+
+# Creating sequences for LSTM
+ninput <- 12
+noutput <- 1
+
+nSubsequences <- nrow(train) - (ninput + noutput) + 1
+getSubsequence <- function(i) train$Normalized_Ridership[i:(i - 1 + ninput+noutput)]
+subsequences <- t(sapply(1:nSubsequences, getSubsequence))
+
+# split subsequences into input (x) and output (y) and convert both to arrays
+x.train <- subsequences[, 1:ninput]
+y.train <- subsequences[, (ninput+1):(ninput+noutput)]
+x.train <- array(data=x.train, dim=c(nrow(x.train), ninput, 1))
+y.train <- array(data=y.train, dim=c(nrow(x.train), noutput, 1))
+dim(x.train); dim(y.train)
+```
+
+
+```{r}
+# Table 8.3: Step 2: Defining an LSTM model for forecasting
+# load required packages for deep learning
+#library(reticulate)
+#library(keras)
+# You can confirm that the installation succeeded with:
+install_keras(envname = "r-reticulate")
+library(tensorflow)
+tf$constant("Hello Tensorflow!")
+```
+
+
+```{r}
+# Random seed numbers with the TensorFlow Backend
+set.seed(123)      # R
+py_set_seed(1234)  # Python and numpy
+set_random_seed(2) # Tensorflow
+
+lstm_model <- keras_model_sequential() |>
+  layer_lstm(units = 50, # size of the layer
+             batch_input_shape = c(1, ninput, 1), # batch size, timesteps, features
+             dropout = 0.01,
+             recurrent_dropout = 0.01,
+             return_sequences = TRUE,
+             stateful = TRUE) |>
+  layer_lstm(units = 50,
+             dropout = 0.01,
+             recurrent_dropout = 0.01,
+             return_sequences = TRUE,
+             stateful = TRUE) |>
+  layer_flatten() |>
+  layer_dense(units = 1)
+
+summary(lstm_model)
+
+lstm_model |>
+  compile(loss = 'mae', optimizer = 'adam', metrics = 'mse')
+
+# Table 8.4: Step 3: Applying LSTM model to Amtrak data
+
+lstm_model |> fit(
+  x = x.train,
+  y = y.train,
+  batch_size = 1,
+  epochs = 400,
+  verbose = 1,
+  shuffle = TRUE
+)
+
+# Step 4: Forecasting one month ahead with sliding window 
+window <- as.numeric(train$Normalized_Ridership[(nTrain-11):nTrain])
+forecast <- numeric(nValid)
+
+for (i in 1:nValid) {
+  x <- array(data = window, dim = c(1, ninput, 1))
+  pred <- predict(lstm_model, x, batch_size = 1)
+  window <- c(window[-1], pred[1])  # Move the window forward by discarding the first element and appending the prediction
+  forecast[i] <- pred[1]
+}
+
+forecast_tbl <- valid |> transmute(Forecast = inv_normalize(forecast))
+
+## Alternative longer step-by-step approach:
+# Inverse the normalization
+# forecast <- inv_normalize(forecast)
+# Convert to tsibble
+#forecast_tbl <- tsibble(
+#  Forecast = forecast,
+#  Month = yearmonth(seq(as.Date("1991/01/01") + months(nTrain), by = "1 month", length.out = length(forecast))),
+#  index = Month
+#)
+
+# For fitted values
+fitted <- predict(lstm_model, x.train, batch_size = 1)
+fitted_values <- inv_normalize(as.vector(fitted))
+fitted_tbl <- tsibble(
+  Fitted = fitted_values,
+  Month = yearmonth(seq(as.Date("1991/01/01") + months(ninput), by = "1 month", length.out=length(fitted_values))),
+  index = Month
+)
+
+# Plot 
+pdf("AmtrakFig_9_7_3e.pdf",height=4,width=6)
+  autoplot(ridership, Ridership) +
+    autolayer(fitted_tbl, Fitted, color = "blue") +
+    autolayer(forecast_tbl, Forecast, linetype = "dashed", color = "blue") +
+    scale_x_yearmonth(date_breaks = "2 years", date_labels = "%Y") +
+    geom_vline(xintercept= as.numeric(as.Date(yearmonth("2001-April"))), linetype="solid", color = "grey55", size=0.6)+
+    geom_segment(aes(x = yearmonth("2001-May"), y = 2250, xend = yearmonth("2004-Mar"), yend = 2250),
+                 arrow = arrow(length = unit(0.25, "cm"), ends = "both") , size = 0.3, color = "grey55")+ 
+    annotate(geom = "text", x = yearmonth("2002-Aug"), y = 2280, label = "Validation", color = "grey37") +
+    geom_segment(aes(x = yearmonth("1991-Jan"), y = 2250, xend = yearmonth("2001-Mar"), yend = 2250),
+                 arrow = arrow(length = unit(0.25, "cm"), ends = "both"), size = 0.3, color = "grey55")+ 
+    annotate(geom="text", x = yearmonth("1996-Aug"), y = 2280, label = "Training", color = "grey37")
+dev.off() 
+  
+
+# Table 8.5: Step 5: Computing performance measures for LSTM model
+
+# Accuracy measures (cannot use fable because do not have a fable model)
+train_all <- train |>
+  left_join(fitted_tbl, by = "Month") |>
+  mutate(error = Ridership - Fitted)
+
+valid_all <- valid |>
+  left_join(forecast_tbl, by = "Month") |>
+  mutate(forecast_error = Ridership - Forecast)
+
+forecast::accuracy(train_all$Fitted, train_all$Ridership)
+forecast::accuracy(forecast_tbl$Forecast, valid$Ridership)
+```
+

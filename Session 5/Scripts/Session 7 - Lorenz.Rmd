@@ -1,0 +1,34 @@
+---
+title: "Session 7 - Lorenz"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("here")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 7 - Lorenz.Rmd") # To help find all the files.
+
+source(here("Scripts/Setup.R"))
+```
+
+```{r data}
+
+```
+
+```{r testsRound1}
+
+```
+
