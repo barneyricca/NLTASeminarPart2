@@ -1,0 +1,94 @@
+---
+title: "Session 2 - DSA"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "doremi",
+                     "haven",
+                     "here",
+                     "lmertest",
+                     "magrittr",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 2 - DSA.Rmd")         # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+# Example
+
+Estimate from some linear oscillator data? Maybe?
+
+# Montpetit et al., (2010)
+
+Data and process from: Montpetit, M. A., Bergeman, C. S., Deboeck, P. R., Tiberio, S. S., & Boker, S. M. (2010). Resilience-as-process: Negative affect, stress, and coupled dynamical systems. Psychology and Aging, 25(3), 631–640. https://doi.org/10.1037/a0019268
+
+```{r data}
+#| include: FALSE
+read_sas(here("Data/level1.sas7bdat")) ->   # Data from Montpetit et al.
+  level1_df                                 #  EMA, already totaled.
+read_sas(here("Data/level2.sas7bdat")) ->   # Survey data
+  level2_df
+
+```
+
+```{r derivatives}
+# Montpetit used GLLA. Do this idiographically for NAffect and stress.
+
+level1_df %>%
+  group_by(id) %>%
+  mutate(NA0 = calculate.gold(NAffect,
+                              time = day)$dsignal[1]) %>%
+  mutate(NA1 = calculate.gold(NAffect,
+                              time = day)$dsignal[2]) %>%
+  mutate(NA2 = calculate.gold(NAffect,
+                              time = day)$dsignal[3]) %>%
+  mutate(S0 = calculate.gold(stress,
+                              time = day)$dsignal[1]) %>%
+  mutate(S1 = calculate.gold(stress,
+                              time = day)$dsignal[2]) %>%
+  mutate(S2 = calculate.gold(stress,
+                              time = day)$dsignal[3]) %>%
+  ungroup() ->
+  gold_df
+
+inner_join(gold_df,                         # Keep only id that appear in both
+           level2_df,                       #  level1_df and level2_df. This is
+           by = "id") ->                    #  different than Montpetit.
+  mont_df
+
+str(mont_df)
+```
+
+Key:
+- id
+- PAffect: sum of 10 PANAS positive affect items
+- NAffect: sum of 10 PANAS negative affect items
+- stress: sum of Perceived Stress Scale (items 1, 2, 3, 6, 7, 8, 9, 10, 11, 14)
+- dispres (dispositional resilience) 
+- frndsup (friend support)
+- famsup (family support)
+
+```{r mlm}
+mont_df %$%
+  lmer(S2 ~ S0 + S1 + NA2 +
+         (1 + dispres + frndsup + famsup | id)) ->
+  dum1
+```
+

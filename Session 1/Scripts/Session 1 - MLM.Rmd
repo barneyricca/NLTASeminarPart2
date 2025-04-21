@@ -1,0 +1,115 @@
+---
+title: "Session 1 - MLM"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("here",
+                     "lmerTest",            # lme4 package with tests
+                     "magrittr",
+                     "mlmhelpr",
+                     "nlme",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 1 - MLM.Rmd") # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+# Simulated Data
+```{r}
+load(here("Data/Simpson.RData"))
+```
+
+
+# Radon Modeling
+
+```{r data}
+read.delim(here("Data/cty.dat"),            # From Gelman & Hill; radon data.
+           sep = ',') -> U_df               #  Has Uranium counts
+read.delim(here("Data/srrs2.dat"),          # 
+           sep = ',') -> srrs_df
+
+```
+
+```{r wrangle}
+"ctfips" -> 
+  colnames(srrs_df)[24]
+left_join(srrs_df,                          # Connect Uranium data to activity
+          U_df,
+          by = c("stfips","ctfips")) %>%    # State and county match
+  filter(state == "MN") %>%                 # Use only Minnesota
+  select(idnum, floor, activity, Uppm,      # Floor is important
+         ctfips, county) %>%
+  mutate(rad = ifelse(activity == 0,        # G & H suggest logarithms, but
+                      log(0.1),             #  there are 4 @ zeroes.
+                      log(activity))) ->    # G & H suggest logarithm
+  radon_df
+
+```
+
+```{r notPooled}
+radon_df %$%
+  lm(activity ~ Uppm + floor + county) ->
+  rad_no_pool
+
+summary(rad_no_pool)
+```
+
+```{r completePooling}
+radon_df %$%
+  lm(activity ~ Uppm + floor) ->
+  rad_complete_pool
+
+summary(rad_complete_pool)
+```
+
+```{r partialPooling}
+radon_df %$%
+  lmer(activity ~ Uppm + floor +
+         (1 + floor | county)) ->
+  rad_mlm
+
+summary(rad_mlm)
+```
+
+The intraclass correlation (ICC) tells us more-or-less how important the nesting is. Really, ICC is only good for "random-intercept" models, not "random-slope" models. Still, values "near" 0 indicate nesting not very important.
+```{r ICC}
+?icc                                        # Note the warning!
+mlmhelpr::icc(rad_mlm)                      #
+
+```
+
+
+# Rats' Diets
+
+Body weight of many rats on different diets, measured over several weeks. There are 3 levels; see https://rpsychologist.com/r-guide-longitudinal-lme-lmer#partially-nested-models or https://www.alexanderdemos.org/Mixed5.html for more information about doing this.
+
+```{r}
+data("BodyWeight")                          # From package:nlme
+
+
+
+BodyWeight %$%
+  lmer(weight ~ Time +                      # weight depends upon Time nested
+         (Time | Rat / Diet)) ->            #  in Rat nested within Diet
+  w1                                        # Ignore convergence issues for
+                                            #  purposes of this demo.
+summary(w1)                                 # Time, Time | Rat, and Time | Rat
+                                            #  | Diet all "significant."
+```
+

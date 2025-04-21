@@ -1,0 +1,305 @@
+---
+title: "Session 2 - Latent Classes"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c(#"devtools",            # R packages needed here
+                     "here",
+                     "kml",
+                     "lcmm",
+                     "magrittr",
+#                     "NlinTS",
+#                     "nonlinearAnalysis",
+#                     "rEDM",
+#                     "Rssa",
+                     "tidyverse")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 2 - Latent Classes.Rmd") # To help find all the files.
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+
+source(here("Scripts/Functions.R"))
+```
+
+```{r data}
+load(here("Data/HRF.RData"))
+data(iris)
+```
+
+# Clustering
+
+1. Choose centers (randomly or by assignment)
+2. Put every point into the cluster belonging to the closest center
+3. Calculate a new center for each cluster
+4. Repeat (2) and (3) until convergence
+
+Just use sepal length and petal length of iris data for ease of visualization
+```{r}
+
+# 1. Choose centers randomly
+set.seed(42)
+sample(1:nrow(iris), 3) ->
+  init_rows
+data.frame(pt = init_rows,
+           x = iris$Sepal.Length[init_rows],
+           y = iris$Petal.Length[init_rows]) ->
+  centers_df
+
+# 2. Put every point into the cluster belonging to the closest center
+assign_cluster(iris[,c(1,3)],
+               centers_df) ->
+  iris$cluster
+
+{
+  plot(iris[,1], iris[,3],
+       col = iris$cluster,
+       xlab = "Sepal Length",
+       ylab = "Petal Length",
+       main = "Clustered Data")
+  points(centers_df$x,
+         centers_df$y,
+         pch = 16,
+         col = 1:3)
+}
+
+table(iris$cluster)
+
+# 3. Calculate a new center for each cluster
+{
+  mean(iris$Sepal.Length[which(iris$cluster == 1)]) ->
+    centers_df$x[1]
+  mean(iris$Sepal.Length[which(iris$cluster == 2)]) ->
+    centers_df$x[2]
+  mean(iris$Sepal.Length[which(iris$cluster == 3)]) ->
+    centers_df$x[3]
+  mean(iris$Petal.Length[which(iris$cluster == 1)]) ->
+    centers_df$y[1]
+  mean(iris$Petal.Length[which(iris$cluster == 2)]) ->
+    centers_df$y[2]
+  mean(iris$Petal.Length[which(iris$cluster == 3)]) ->
+    centers_df$y[3]
+}
+
+```
+The built-in ways:
+```{r}
+kmeans(iris[,c(1,3)],                       #
+       centers = 3,                         #
+       nstart = 20)$cluster ->              #
+  iris$kmeans                               #
+
+dist(iris[,c(1,3)]) ->                      #
+  iris_dist                                 #
+hclust(d = iris_dist) ->                    #
+  iris_hclust                               #
+plot(iris_hclust)                           #
+cutree(iris_hclust, k = 3) ->               #
+  iris$hclust                               #
+
+```
+
+# Growth Mixture Modeling (GMM)
+The next chunk takes quite a while to run...check the times listed in the chunk. (Times are on a 2019 MacBook Pro, 2.3 GHz, 8 Core Intel i9; only 1 core was used for the multiple groups, however.)
+```{r}
+#| eval: FALSE
+#| include: FALSE
+set.seed(42) 
+
+Sys.time() -> t1                            # 10:56:52 EDT
+hlme(relive ~ hours + I(hours*hours),
+     subject = "id",
+     random =~1 + hours, 
+     ng = 1,
+     data = ptsd_df,
+     verbose = FALSE,                       # Don't print stuff
+     nproc = 7) ->                          # Parallel processing
+  gmm1_2
+
+Sys.time() -> t2                            # 10:57:34 EDT
+gridsearch(rep = 100,
+           maxiter = 10,
+           minit = gmm1_2, 
+           hlme(relive ~ hours + I(hours*hours),
+                subject = "id", 
+                random =~ 1 + hours, 
+                ng = 2, 
+                data = ptsd_df, 
+                mixture =~ hours, 
+                nwg = TRUE)) ->
+  gmm2_2
+
+Sys.time() -> t3                            # 11:55:50 EDT
+gridsearch(rep = 100,
+           maxiter = 10,
+           minit = gmm1_2, 
+           hlme(relive ~ hours + I(hours*hours),
+                subject = "id", 
+                random =~ 1 + hours, 
+                ng = 3, 
+                data = ptsd_df, 
+                mixture =~ hours, 
+                nwg = TRUE)) ->
+  gmm2_3
+
+Sys.time() -> t4                            # 14:18:12 EDT
+gridsearch(rep = 100,
+           maxiter = 10,
+           minit = gmm1_2, 
+           hlme(relive ~ hours + I(hours*hours),
+                subject = "id", 
+                random =~ 1 + hours, 
+                ng = 4, 
+                data = ptsd_df, 
+                mixture =~ hours, 
+                nwg = TRUE)) ->
+  gmm2_4
+
+Sys.time() -> t5                            # 18:57:47 EDT
+gridsearch(rep = 100,
+           maxiter = 10,
+           minit = gmm1_2, 
+           hlme(relive ~ hours + I(hours*hours),
+                subject = "id", 
+                random =~ 1 + hours, 
+                ng = 5, 
+                data = ptsd_df, 
+                mixture =~ hours, 
+                nwg = TRUE)) ->
+  gmm2_5
+
+Sys.time() -> t6                            # 03:09:34 EDT (next day)
+
+list(gmm1_2, gmm2_2, gmm2_3, gmm2_4, gmm2_5) ->
+  gmm_ls
+save(gmm_ls, 
+     file = here("Data/Relive GMM Results.RData"))
+
+```
+```{r}
+load(here("Data/Relive GMM Results.RData"))
+gmm_ls[[1]] -> gmm2_1
+gmm_ls[[2]] -> gmm2_2
+gmm_ls[[3]] -> gmm2_3
+gmm_ls[[4]] -> gmm2_4
+gmm_ls[[5]] -> gmm2_5
+
+summarytable(gmm2_1, gmm2_2,                # 2 classes best (BIC & loglik)
+             gmm2_3, gmm2_4, gmm2_5)
+
+#summary(gmm2_2)
+gmm2_2$pprob$class                          # Class membership
+```
+
+# K-Means Longitudinal (KML)
+package:kml requires all the same times. Rather than worry about the exact interpolation, just choose the closest 6 hour mark to each measure.
+
+```{r adjustTimes}
+as.matrix(                                  # kml() wants wide matrix
+  ptsd_df %>%
+    arrange(id) %>%
+    mutate(time =                           # Nearest 6 hour block
+             as.integer(hours / 6 + 0.5)) %>%
+    select(id, time, relive) %>%
+    mutate(relive_sc = scale(relive)) %>%
+    select(-relive) %>%
+    group_by(id, time) %>%
+    slice_head(n = 1) %>%                   # Only first reading for each time
+    ungroup() %>%
+    pivot_wider(
+      names_from = time,
+      values_from = relive_sc) %>%
+    select(as.character(0:145))) ->         # Not all columns 0:168 exist.
+  ptsd_wide_mat
+list(1:19, 1:146) ->
+  dimnames(ptsd_wide_mat)
+
+```
+```{r}
+Sys.time() -> t1
+
+getwd() ->
+  wd
+setwd(tempdir())
+getwd()
+
+kml::cld(traj = ptsd_wide_mat) ->
+  ptsd_cld
+
+kml:kml(ptsd_cld)                           # Stores in ptsd_cld
+                                            # I don't know why the error!?!?!
+Sys.time() -> t2
+t2-t1
+
+getClusters(ptsd_cld, 
+            nbCluster = 2)
+
+```
+# Growth Curve K-Means (GCKM)
+
+```{r}
+
+data.frame(i = rep(NA, length(unique(ptsd_df$id))),
+           s = rep(NA, length(unique(ptsd_df$id))),
+           q = rep(NA, length(unique(ptsd_df$id)))) ->
+  fit_df
+
+Sys.time() -> t1
+
+for(index in 1:length(unique(ptsd_df$id))) {# Fit each trajectory
+  ptsd_df %>%
+    filter(id == unique(ptsd_df$id)[index]) ->
+    df
+    lm(relive ~ hours + I(hours*hours),
+       data = ptsd_df %>%
+         filter(id == unique(ptsd_df$id)[index]))$coef ->
+    fit_df[index,]
+}
+
+kmeans(fit_df, 2, nstart = 20) -> gckm2
+kmeans(fit_df, 3, nstart = 20) -> gckm3
+kmeans(fit_df, 4, nstart = 20) -> gckm4
+kmeans(fit_df, 5, nstart = 20) -> gckm5
+kmeans(fit_df, 6, nstart = 20) -> gckm6
+
+Sys.time() -> t2
+t2-t1
+
+```
+
+Compare classes:
+```{r}
+table(gmm2_2$pprob$class)
+gmm2_2$pprob$class
+
+table(getClusters(ptsd_cld,
+                  nbCluster = 2))
+getClusters(ptsd_cld,
+            nbCluster = 2)
+
+table(gckm2$cluster)
+gckm2$cluster
+
+```
+
+
+# DSA Latent Classes
+
+Can do the same with DSA
+- GMM: Add a 3rd level (ugh!)
+- GCKM: OK
+- KFL: OK

@@ -1,0 +1,139 @@
+---
+title: "Session 1 - Imputation"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+for(packageName in c("devtools",            # R packages needed here
+                     "here",
+#                     "imputeMissings",
+                     "imputeTS",            # na_kalman()
+                     "magrittr",
+#                     "mi",                  # Multiple imputation
+                     "randomForest",
+                     "tidyverse",
+                     "VIM")) {
+  if(!is.element(packageName,               # If package is NOT installed...
+                 installed.packages()[,1])) {
+    install.packages(packageName)           #  ...then install it.
+  }
+  library(packageName,                      # Add package to environment
+          character.only=TRUE,
+          quietly=TRUE,
+          verbose=FALSE)
+}
+
+i_am("Scripts/Session 1 - Imputation.Rmd") # To help find all the files.
+
+library(ndstools)
+
+options(show.signif.stars = FALSE)          # Don't stargaze
+options(digits = 3)                         # Round to 3 digits by default
+```
+
+```{r data}
+data(CHAIN)                                 # mi::CHAIN
+
+data(tsAirgap)                              # Short (144) time-series, with NA
+data(tsAirgapComplete)                      #  and complete.
+# data.frame(                                 # Convert to data frame
+#   airgap = as.numeric(tsAirgap)) ->
+#   airgap_df
+plot(tsAirgap)
+
+data(tsNH4)                                 # Long (4552) time-series, with NA
+data(tsNH4Complete)                         #  and complete.
+plot(tsNH4)
+
+data(tsHeating)                             # Very long (606837) time-series
+data(tsHeatingComplete)                     #  with NA and complete.
+plot(tsHeating)
+```
+
+# Univariate Time Series
+
+kNN doesn't work with univariate time series. Such time series would have to be embedded first, but most of the embedding techniques remove missing data, so that doesn't (currently) work. A *Kalman filter* is an okay way to go.
+
+```{r KalmanImputation}
+#| include: FALSE
+#| eval: FALSE
+
+# I have a problem with Kalman on long files. If I do NOT explicitly
+#  put in the indices, the process appears to hang. I don't yet know why.
+#  When I explicitly include the indices, all seems fine.
+imputeTS::na_kalman(tsAirgap) ->            # Length: 144; missing: 13
+  airgap_kalman
+
+imputeTS::na_kalman(tsNH4[1:4552]) ->       # Length: 4552; missing: 883
+  NH4_kalman
+
+imputeTS::na_kalman(tsHeating[1:606837]) -> # Length: 606837; missing: 57391
+  heating_kalman
+
+```
+
+
+```{r KalmanPlots}
+
+{
+  plot(density(tsAirgapComplete),
+       main = "tsAirgap Density")
+  lines(density(airgap_kalman),
+        col = "blue")
+  legend(500, 0.0025,
+         legend = c("Original", "Imputed"),
+         fill = c("black", "blue"))
+}
+
+{
+  plot(density(tsHeatingComplete))
+  lines(density(heating_imp$Kalman),
+        col = "blue")
+  legend(500, 0.0025,
+         legend = c("Original", "Imputed"),
+         fill = c("black", "blue"))
+}
+
+```
+
+# Multivariate Time Series
+```{r knnImputation}
+# I don't know of any time-series specific knn, but VIM::knn() does
+#  general knn imputation.
+
+VIM::kNN(data = CHAIN,
+         variable = "log_virus",
+         k = 3,
+         dist_var = c("age", "income",
+                      "healthy", "mental",
+                      "damage", "treatment")) ->
+  CHAIN_imp
+
+set.seed(42)
+imputeMissings::impute(CHAIN,
+                       method = "randomForest") ->
+  CHAIN_rf
+
+{
+  plot(density(stats::na.omit(CHAIN$log_virus)),
+       main = "Log(virus) density plot",
+       ylim = c(0,0.2))
+  lines(density(CHAIN_imp$log_virus),
+        col = "blue")
+  lines(density(CHAIN_rf$log_virus),
+        col = "green")
+  legend(500, 0.0025,
+         legend = c("Original", "Kalman", "Random Forest"),
+         fill = c("black", "blue", "green"))
+}
+
+```
+
+
+
+
+

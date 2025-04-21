@@ -1,0 +1,123 @@
+---
+title: "Session 1 - EM"
+output: word_document
+date: "2025-03-16"
+---
+
+```{r setup}
+#| include: FALSE
+knitr::opts_chunk$set(echo = TRUE)
+
+options(digits = 4)                         # Round to 3 digits by default
+```
+
+# Expectation-Maximization example
+
+Expanded from Do, C. B., & Batzoglou, S. (2008). What is the expectation maximization algorithm? Nature Biotechnology, 26(8), 897–899. https://doi.org/10.1038/nbt1406
+
+```{r setup}
+set.seed(19390425)
+
+0.8 -> pA                                   # True probability for coin A
+0.5 -> pB                                   # True probability for coin B
+
+50 -> N
+
+matrix(0,
+       nrow = N,                            # Five sets of data with
+       ncol = 10) ->                        #  10 flips in each set
+  flip_mat
+
+sample(c(pA, pB), N, replace = TRUE) ->     # Randomly select a coin each time.
+  prob
+
+for(index in 1:N) {                         # Create 5 sets of data
+  sample(c(1,0),                            # 1 for "H", 0 for "T" will make
+         10,                                #  computations easier.
+         replace = TRUE,
+         prob = c(prob[index],              # Recall: Using a random coin each
+                  1-prob[index])) ->        #  time.
+  flip_mat[index,]
+}
+
+vector(mode = "numeric",                    # Probability of getting each row
+       length = N) ->                       #  with each coin
+  dA ->
+  dB
+
+rowSums(flip_mat) ->
+  heads
+
+```
+
+```{r do_and_b}
+#| eval: FALSE
+
+# Data from the Do & Batzoglou example (Figure 1).
+matrix(c(1,0,0,0,1,1,0,1,0,1,
+         1,1,1,1,0,1,1,1,1,1,
+         1,0,1,1,1,1,1,0,1,1,
+         1,0,1,0,0,0,1,1,0,0,
+         0,1,1,1,0,1,1,1,0,1),
+       nrow = 5,
+       ncol = 10,
+       byrow = TRUE) ->
+  flip_mat
+rowSums(flip_mat) ->
+  heads
+
+0.6 -> pA_g                                 # Initial guess for pA
+0.5 -> pB_g                                 # Initial guess for pB
+
+# Be very careful! Do & Batzoglou get away with choosing N = 5 because they
+#  carefully chose the initial flips. However, with small numbers,
+#  you are unlikely to converge to the "correct" answer!
+# This is a case where confidence intervals are important!!!!
+
+5 -> N
+
+```
+
+Initial guesses. Be careful! Choosing poorly will converge, but not to the "correct" answer.
+```{r initialGuess}
+0.6 -> pA_g                                 # Initial guess for pA
+0.7 -> pB_g                                 # Initial guess for pB
+
+```
+
+Iterate until convergence
+
+```{r}
+
+for(index in 1:N) {
+  dbinom(heads[index],                      # Probability of getting row index
+         10,                                #  from coin A
+         pA_g) ->
+    dA[index]
+  dbinom(heads[index],                      # Probability of getting row index
+         10,                                #  from coin B
+         pB_g) ->
+    dB[index]
+}
+
+# Relative probabilities (i.e., dA + dB == 1)
+dA / (dA + dB) -> dA_new
+dB / (dA + dB) -> dB_new
+
+# Calculate the total expected number of heads and tails for each probability:
+sum(dA_new * heads) -> AHeads
+sum(dA_new * (10 - heads)) -> ATails
+sum(dB_new * heads) -> BHeads
+sum(dB_new * (10 - heads)) -> BTails
+
+# New guess:
+AHeads / (ATails + AHeads) -> pA_g
+BHeads / (BTails + BHeads) -> pB_g
+
+pA_g
+pB_g
+
+# Repeat chunk until convergence
+
+```
+
